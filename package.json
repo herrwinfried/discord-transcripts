@@ -9,7 +9,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
     "postbuild": "cp ./src/template.html ./dist/template.html",
-    "prepublish": "npm run build",
+    
     "test:commonjs": "node ./tests/generate.js",
     "test:typescript": "ts-node ./tests/generate.ts"
   },
