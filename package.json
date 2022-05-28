@@ -1,5 +1,5 @@
 {
-  "name": "discord-html-transcripts",
+  "name": "discord-transcripts",
   "version": "2.4.4",
   "description": "A nicely formatted html transcript generator for discord.js.",
   "main": "dist/index.js",
@@ -8,7 +8,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
-    "postbuild": "cp ./src/template.html ./dist/template.html",
+    "postbuild": "( copy ./src/template.html ./dist/template.html ) || ( cp ./src/template.html ./dist/template.html )",
     "prepublish": "npm run build",
     "test:commonjs": "node ./tests/generate.js",
     "test:typescript": "ts-node ./tests/generate.ts"
