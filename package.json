@@ -12,7 +12,7 @@
     "postbuild:win32": "copy .\\src\\template.html .\\dist\\template.html",
     "postbuild:darwin:linux": "cp ./src/template.html ./dist/template.html",
     "postbuild:default": "echo 'This will run on any platform that does not have its own script'",
-    "heroku-postbuild": "cp ./src/template.html ./dist/template.html"
+    "heroku-postbuild": "cp ./src/template.html ./dist/template.html",
     "prepublish": "npm run build",
     "test:commonjs": "node ./tests/generate.js",
     "test:typescript": "ts-node ./tests/generate.ts"
