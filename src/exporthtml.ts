@@ -104,8 +104,8 @@ function generateTranscript<T extends ReturnTypes>(messages: discord.Message[], 
         // timestamp
         const timestamp = document.createElement('span');
         timestamp.classList.add('chatlog__timestamp');
-        timestamp.textContent = message.createdAt.toLocaleString("en-us", staticTypes.timestampShort);
-        timestamp.title = he.escape(message.createdAt.toLocaleTimeString("en-us", staticTypes.timestampLong))
+        timestamp.textContent = new Date(message.createdAt).toLocaleString();
+        timestamp.title = he.escape(new Date(message.createdAt).toLocaleTimeString())
 
         content.appendChild(timestamp);
 
@@ -127,7 +127,7 @@ function generateTranscript<T extends ReturnTypes>(messages: discord.Message[], 
                 if (message.editedTimestamp != null) {
                     var edited = document.createElement('div');
                     edited.classList.add('chatlog__edited');
-                    edited.textContent = '(edited)';
+                    edited.textContent = '(düzenlendi)';
                     messageContent.appendChild(edited);
                 }
             } else {
@@ -151,7 +151,7 @@ function generateTranscript<T extends ReturnTypes>(messages: discord.Message[], 
                 if (message.editedTimestamp != null) {
                     var edited = document.createElement('div');
                     edited.classList.add('chatlog__edited');
-                    edited.textContent = '(edited)';
+                    edited.textContent = '(düzenlendi)';
                     messageContentContentMarkdownSpan.appendChild(edited);
                 }
             }
