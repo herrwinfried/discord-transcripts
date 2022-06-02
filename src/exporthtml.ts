@@ -88,8 +88,8 @@ function generateTranscript<T extends ReturnTypes>(messages: discord.Message[], 
         // message author name
         const authorName = document.createElement('span');
         authorName.classList.add('chatlog__author-name');
-        authorName.title = he.escape(`${author.tag} ${author.id}`);
-        authorName.textContent = message.member?.nickname ? message.member.nickname : author.username;
+        authorName.title = he.escape(`${author.tag} ${author.id.toString()}`);
+        authorName.textContent = message.member?.nickname ?? author.username;
         authorName.setAttribute('data-user-id', author.id);
         authorName.style.color = message.member?.displayHexColor ?? `#ffffff`;
 
