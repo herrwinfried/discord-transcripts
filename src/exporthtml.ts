@@ -4,6 +4,7 @@ import * as fs           from 'fs';
 import * as path         from 'path';
 import * as he           from 'he';
 import hljs              from 'highlight.js';
+import * as momenttimezone from 'moment-timezone';
 import * as staticTypes  from './static';
 import { minify }        from 'html-minifier';
 
@@ -57,7 +58,7 @@ function generateTranscript<T extends ReturnTypes>(messages: discord.Message[], 
             <span class="chatlog__reference-name" title="${author.username.replace(/"/g, '')}" style="color: ${author.hexAccentColor ?? '#FFFFFF'}">${author.bot ? `<span class="chatlog__bot-tag">BOT</span> ${he.escape(author.username)}` : he.escape(author.username)}</span>
             <div class="chatlog__reference-content">
                 <span class="chatlog__reference-link" onclick="scrollToMessage(event, '${message.reference.messageId}')">
-                        ${referencedMessage ? (referencedMessage?.content ? `${formatContent(referencedMessage?.content, channel, false, true)}...` : '<em>Click to see attachment</em>') : '<em>Original message was deleted.</em>'}
+                        ${referencedMessage ? (referencedMessage?.content ? `${formatContent(referencedMessage?.content, channel, false, true)}...` : '<em>Eki görmek için tıklayın</em>') : '<em>Orijinal mesaj silindi.</em>'}
                 </span>
             </div>`;
 
@@ -87,8 +88,8 @@ function generateTranscript<T extends ReturnTypes>(messages: discord.Message[], 
         // message author name
         const authorName = document.createElement('span');
         authorName.classList.add('chatlog__author-name');
-        authorName.title = he.escape(author.tag);
-        authorName.textContent = author.username;
+        authorName.title = he.escape(author.tag + " (" + author.id + ")");
+        authorName.textContent = message.member?.nickname ? message.member.nickname : author.username;
         authorName.setAttribute('data-user-id', author.id);
         authorName.style.color = message.member?.displayHexColor ?? `#ffffff`;
 
@@ -104,8 +105,8 @@ function generateTranscript<T extends ReturnTypes>(messages: discord.Message[], 
         // timestamp
         const timestamp = document.createElement('span');
         timestamp.classList.add('chatlog__timestamp');
-        timestamp.textContent = new Date(message.createdAt).toLocaleString();
-        timestamp.title = he.escape(new Date(message.createdAt).toLocaleTimeString())
+        timestamp.textContent = momenttimezone(new Date(message.createdAt)).tz('Europe/Istanbul').format("DD/MM/YYYY HH:mm:ss");
+        timestamp.title = he.escape(momenttimezone(new Date(message.createdAt)).tz('Europe/Istanbul').format("DD/MM/YYYY HH:mm:ss"))
 
         content.appendChild(timestamp);
 
@@ -442,7 +443,7 @@ function generateTranscript<T extends ReturnTypes>(messages: discord.Message[], 
 
                     const embedFooterText = document.createElement('span');
                     embedFooterText.classList.add('chatlog__embed-footer-text');
-                    embedFooterText.textContent = embed.timestamp ? `${embed.footer.text} • ${new Date(embed.timestamp).toLocaleString()}` : embed.footer.text;
+                    embedFooterText.textContent = embed.timestamp ? `${embed.footer.text} • ${momenttimezone(new Date(embed.timestamp)).tz('Europe/Istanbul').format("DD/MM/YYYY HH:mm:ss")}` : embed.footer.text;
                     
                     embedFooter.appendChild(embedFooterText);
 
