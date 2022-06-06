@@ -1,5 +1,5 @@
 {
-  "name": "hofmeister-discord-transcripts",
+  "name": "discord-transcripts",
   "version": "2.4.4",
   "description": "A nicely formatted html transcript generator for discord.js.",
   "main": "dist/index.js",
@@ -24,13 +24,13 @@
     "html-transcripts",
     "discord-html-transcripts"
   ],
-  "author": "hofmeister <ozgrrarslln@icloud.com>",
+  "author": "Derock <derock@derock.dev>",
   "license": "GNU GPLv3",
   "files": [
     "dist/**/*"
   ],
   "dependencies": {
-    "discord.js": "^13.7.0",
+    "discord.js": "^13.6.0",
     "fs": "^0.0.1-security",
     "fs-extra": "^10.1.0",
     "he": "^1.2.0",
