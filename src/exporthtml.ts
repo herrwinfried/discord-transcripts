@@ -1,25 +1,54 @@
-import * as discord      from 'discord.js';
-import { JSDOM }         from 'jsdom';
-import * as fs           from 'fs';
-import * as path         from 'path';
-import * as he           from 'he';
-import hljs              from 'highlight.js';
+import * as discord       from 'discord.js';
+import { JSDOM }          from 'jsdom';
+import * as fs            from 'fs';
+import * as path          from 'path';
+import * as he            from 'he';
+import hljs               from 'highlight.js';
 import * as momenttimezone from 'moment-timezone';
-import * as staticTypes  from './static';
-import { minify }        from 'html-minifier';
+import * as staticTypes   from './static';
+import { minify }         from 'html-minifier';
+import { parse as emoji } from 'twemoji-parser';
 
 import { internalGenerateOptions, ObjectType, ReturnTypes } from './types';
+import { downloadImageToDataURL } from './utils';
 const template = fs.readFileSync(path.join(__dirname, 'template.html'), 'utf8');
+
+const version    = require('../package.json').version;
+const isDJSv14   = discord.version.startsWith('14');
+// @ts-ignore
+const Attachment = (isDJSv14 ? discord.Attachment : discord.MessageAttachment) as (typeof discord.MessageAttachment);
+
+if(!process.env.HIDE_TRANSCRIPT_WARNINGS && isDJSv14)
+    console.log('[WARN] discord-html-transcripts was designed to work with v13, but you are using v14. Please note that some bugs may occur.');
 
 // copilot helped so much here
 // copilot smart 🧠
 
-function generateTranscript<T extends ReturnTypes>(messages: discord.Message[], channel: discord.TextBasedChannel, opts: internalGenerateOptions = { returnType: 'buffer' as T, fileName: 'transcript.html' }): ObjectType<T> {
-    if(channel.type === "DM" || channel.isThread())
-        throw new Error("Cannot operate on DM channels or thread channels");
+async function generateTranscript<T extends ReturnTypes>(
+    messages: discord.Message[], 
+    inputChannel: discord.TextBasedChannel, 
+    opts: internalGenerateOptions = { returnType: 'buffer' as T, fileName: 'transcript.html' }
+): Promise<ObjectType<T>> {
+    if(
+        (isDJSv14 
+            // @ts-ignore
+            ? inputChannel.type === 1 // djs v14 uses 1 for dm
+            : inputChannel.type === "DM")
+        || inputChannel.isThread()
+    ) throw new Error("Cannot operate on DM channels or thread channels");
+
+    const channel = inputChannel as (discord.NewsChannel | discord.TextChannel);
 
     const dom = new JSDOM(template.replace('{{TITLE}}', channel.name));
     const document = dom.window.document;
+
+    // Replace <style>...</style> with <link rel="stylesheet" src="https://cdn.jsdelivr.net/npm/discord-html-transcripts@version/dist/template.css">
+    const style = document.querySelector('style')!;
+    style.parentNode!.removeChild(style);
+    const link = document.createElement('link');
+    link.setAttribute('rel', 'stylesheet');
+    link.setAttribute('href', 'https://cdn.jsdelivr.net/npm/discord-html-transcripts@' + (version ?? 'latest') + '/dist/template.css');
+    document.head.appendChild(link);
 
     // Basic Info (header)
     const guildIcon = document.getElementsByClassName('preamble__guild-icon')[0] as HTMLImageElement;
@@ -34,8 +63,10 @@ function generateTranscript<T extends ReturnTypes>(messages: discord.Message[], 
 
     const transcript = document.getElementById('chatlog')!;
 
+    const messagesArray = (Array.from(messages.values())).sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+
     // Messages
-    for(const message of (Array.from(messages.values())).sort((a, b) => a.createdTimestamp - b.createdTimestamp)) {
+    await Promise.all(messagesArray.map(async message => {
         // create message group
         const messageGroup = document.createElement('div');
         messageGroup.classList.add('chatlog__message-group');
@@ -50,7 +81,7 @@ function generateTranscript<T extends ReturnTypes>(messages: discord.Message[], 
             const reference = document.createElement('div');
             reference.classList.add('chatlog__reference');
 
-            const referencedMessage = messages instanceof discord.Collection ? messages.get(message.reference.messageId) : messages.find(m => m.id === message.reference!.messageId);
+            const referencedMessage: discord.Message | null = messages instanceof discord.Collection ? messages.get(message.reference.messageId) : messages.find(m => m.id === message.reference!.messageId);
             const author = referencedMessage?.author ?? staticTypes.DummyUser;
 
             reference.innerHTML = 
@@ -58,7 +89,7 @@ function generateTranscript<T extends ReturnTypes>(messages: discord.Message[], 
             <span class="chatlog__reference-name" title="${author.username.replace(/"/g, '')}" style="color: ${author.hexAccentColor ?? '#FFFFFF'}">${author.bot ? `<span class="chatlog__bot-tag">BOT</span> ${he.escape(author.username)}` : he.escape(author.username)}</span>
             <div class="chatlog__reference-content">
                 <span class="chatlog__reference-link" onclick="scrollToMessage(event, '${message.reference.messageId}')">
-                        ${referencedMessage ? (referencedMessage?.content ? `${formatContent(referencedMessage?.content, channel, false, true)}...` : '<em>Eki görmek için tıklayın</em>') : '<em>Orijinal mesaj silindi.</em>'}
+                        ${referencedMessage ? (referencedMessage?.content ? `${formatContent(referencedMessage?.content, channel, false, true)}...` : '<em>Click to see attachment</em>') : '<em>Original message was deleted.</em>'}
                 </span>
             </div>`;
 
@@ -88,8 +119,8 @@ function generateTranscript<T extends ReturnTypes>(messages: discord.Message[], 
         // message author name
         const authorName = document.createElement('span');
         authorName.classList.add('chatlog__author-name');
-        authorName.title = he.escape(`${author.tag} ${author.id.toString()}`);
-        authorName.textContent = message.member?.nickname ?? author.username;
+        authorName.title = he.escape(author.tag);
+        authorName.textContent = author.username;
         authorName.setAttribute('data-user-id', author.id);
         authorName.style.color = message.member?.displayHexColor ?? `#ffffff`;
 
@@ -98,7 +129,7 @@ function generateTranscript<T extends ReturnTypes>(messages: discord.Message[], 
         if(author.bot) {
             const botTag = document.createElement('span');
             botTag.classList.add('chatlog__bot-tag');
-            botTag.textContent = (author.flags?.has("VERIFIED_BOT") ? '✔ ' : '') + 'BOT';
+            botTag.textContent = (author.flags?.has(65536 /* verified bot flag */) ? '✔ ' : '') + 'BOT';
             content.appendChild(botTag);
         }
 
@@ -128,7 +159,7 @@ function generateTranscript<T extends ReturnTypes>(messages: discord.Message[], 
                 if (message.editedTimestamp != null) {
                     var edited = document.createElement('div');
                     edited.classList.add('chatlog__edited');
-                    edited.textContent = '(düzenlendi)';
+                    edited.textContent = '(edited)';
                     messageContent.appendChild(edited);
                 }
             } else {
@@ -152,7 +183,7 @@ function generateTranscript<T extends ReturnTypes>(messages: discord.Message[], 
                 if (message.editedTimestamp != null) {
                     var edited = document.createElement('div');
                     edited.classList.add('chatlog__edited');
-                    edited.textContent = '(düzenlendi)';
+                    edited.textContent = '(edited)';
                     messageContentContentMarkdownSpan.appendChild(edited);
                 }
             }
@@ -171,8 +202,8 @@ function generateTranscript<T extends ReturnTypes>(messages: discord.Message[], 
 
                     const attachmentImage = document.createElement('img');
                     attachmentImage.classList.add('chatlog__attachment-media');
-                    attachmentImage.src = attachment.proxyURL ?? attachment.url;
-                    attachmentImage.alt = 'Image attachment';
+                    attachmentImage.src = (opts.saveImages ? await downloadImageToDataURL(attachment.proxyURL ?? attachment.url) : null) ?? attachment.proxyURL ?? attachment.url;
+                    attachmentImage.alt = attachment.description ? `Image: ${attachment.description}` : 'Image attachment';
                     attachmentImage.loading = 'lazy';
                     attachmentImage.title = `Image: ${attachment.name} (${formatBytes(attachment.size)})`;
 
@@ -455,12 +486,59 @@ function generateTranscript<T extends ReturnTypes>(messages: discord.Message[], 
             } 
         }
 
+        // reactions
+        if(message.reactions.cache.size > 0) {
+            const reactionsDiv = document.createElement('div');
+            reactionsDiv.classList.add('chatlog__reactions');
+
+            for(const reaction of Array.from(message.reactions.cache.values())) {
+                /*
+                    <div class="chatlog__reaction" title="upside_down"> - reactionContainer
+                        <img class="emoji emoji--small" alt="🙃" src="https://twemoji.maxcdn.com/2/svg/1f643.svg" loading="lazy"> - reactionEmoji
+                        <span class="chatlog__reaction-count">1</span> - reactionCount
+                    </div>
+                */
+
+                const reactionContainer = document.createElement('div');
+                reactionContainer.classList.add('chatlog__reaction');
+                reactionContainer.title = reaction.emoji.name ?? reaction.emoji.id ?? 'Unknown';
+                
+                const reactionEmoji = document.createElement('img');
+                reactionEmoji.classList.add('emoji', 'emoji--small');
+                reactionEmoji.alt = reaction.emoji.name ?? reaction.emoji.id ?? reaction.emoji.identifier;
+                if(reaction.emoji.url) {
+                    reactionEmoji.src = reaction.emoji.url;
+                } else if(reaction.emoji.name) {
+                    // console.log(reaction.emoji.identifier, reaction.emoji.name, reaction.emoji.id);
+                    reactionEmoji.src = emoji(reaction.emoji.name)[0].url;
+                } else {
+                    // reactionEmoji.src = `https://twemoji.maxcdn.com/2/svg/${reaction.emoji.id}.svg`;
+                    console.warn(`[discord-html-transcripts] [WARN] Failed to parse reaction emoji:`, reaction.emoji);
+                }
+
+                const reactionCount = document.createElement('span');
+                reactionCount.classList.add('chatlog__reaction-count');
+                reactionCount.textContent = reaction.count.toString();
+
+                reactionContainer.appendChild(reactionEmoji);
+                reactionContainer.appendChild(reactionCount);
+
+                reactionsDiv.appendChild(reactionContainer);
+            }
+
+            content.appendChild(reactionsDiv);
+        }
+
         messageGroup.appendChild(content);
         transcript.appendChild(messageGroup);
-    }
+    }));
 
     var serialized = dom.serialize();
-    if(opts.minify) serialized = minify(serialized, staticTypes.MINIFY_OPTIONS)
+    try {
+        if(opts.minify) serialized = minify(serialized, staticTypes.MINIFY_OPTIONS)
+    } catch (error) {
+        console.error(`[discord-html-transcripts] [ERROR] Failed to minify: `, error);
+    }
 
     if(opts.returnType === "string")
         return serialized as ObjectType<T>;
@@ -469,7 +547,7 @@ function generateTranscript<T extends ReturnTypes>(messages: discord.Message[], 
         return Buffer.from(serialized) as ObjectType<T>;
 
     if(opts.returnType === "attachment")
-        return new discord.MessageAttachment(Buffer.from(serialized), opts.fileName ?? 'transcript.html') as ObjectType<T>;
+        return new Attachment(Buffer.from(serialized), opts.fileName ?? 'transcript.html') as ObjectType<T>;
 
     // should never get here.
     return serialized as ObjectType<T>;
@@ -521,19 +599,37 @@ function formatContent(content: string, context: discord.NewsChannel | discord.T
         .replace(/\_(.+?)\_/g, '<em>$1</em>')
         .replace(/`(.+?)`/g, `<span class="pre pre--inline">$1</span>`)
         .replace(/\|\|(.+?)\|\|/g, `<span class="spoiler-text spoiler-text--hidden" ${replyStyle ? '' : 'onclick="showSpoiler(event, this)"'}>$1</span>`)
-        .replace(/\&lt\;@!*&*([0-9]{16,20})\&gt\;/g, (user: string) => {
+        .replace(/\&lt\;@!*&*([0-9]{16,20})\&gt\;/g, (user: string) => { // matches @!<id> or @<id>
             const userId = (user.match(/[0-9]{16,20}/) ?? [""])[0];
             const userInGuild = context.client?.users?.resolve(userId);
 
             return `<span class="mention" title="${userInGuild?.tag ?? userId}">@${userInGuild?.username ?? "Unknown User"}</span>`
         })
-        .replace(/\&lt\;#!*&*([0-9]{16,20})\&gt\;/g, (channel: string) => {
+        .replace(/\&lt\;#!*&*([0-9]{16,20})\&gt\;/g, (channel: string) => { // matches #!<id> or #<id>
             const channelId = (channel.match(/[0-9]{16,20}/) ?? [""])[0];
             const channelInGuild = context.guild.channels.resolve(channelId);
 
             const pre = channelInGuild ? channelInGuild.isText() ? '#' : channelInGuild.isVoice() ? '🔊' : '📁' : "#";
 
             return `<span class="mention" title="${channelInGuild?.name ?? channelId}">${pre}${channelInGuild?.name ?? "Unknown Channel"}</span>`;
+        })
+        .replace(/\&lt\;\@\&amp\;([0-9]{16,20})\&gt\;/g, (channel: string) => { // matches &!<id> or &<id>
+            const roleId = (channel.match(/[0-9]{16,20}/) ?? [""])[0];
+            const roleInGuild = context.guild.roles.resolve(roleId);
+
+            if(!roleInGuild) 
+                return `<span class="mention" title="${roleId}">Unknown Role</span>`;
+            if(!roleInGuild.color) 
+                return `<span class="mention" title="${roleInGuild.name}">@${roleInGuild.name ?? "Unknown Role"}</span>`;
+            
+            const rgb  = roleInGuild.color ?? 0;
+            const r    = (rgb >> 16) & 0xFF;
+            const g    = (rgb >> 8) & 0xFF;
+            const b    = rgb & 0xFF;
+            const a    = 0.1;
+            const rgba = `rgba(${r}, ${g}, ${b}, ${a})`;
+
+            return `<span class="mention" style="color: ${roleInGuild.hexColor}; background-color: ${rgba};" title="${roleInGuild?.name ?? roleId}">@${roleInGuild?.name ?? "Unknown Role"}</span>`;
         });
         
     if(allowExtra) {
