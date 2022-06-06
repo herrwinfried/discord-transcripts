@@ -2,4 +2,3 @@ tests/
 src
 tsconfig.json
 build.mjs
-hofmeister-discord-transcripts-*.tgz
